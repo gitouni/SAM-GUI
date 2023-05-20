@@ -1,0 +1,32 @@
+io:
+  image_dir: img
+  mask_dir: img_sam
+  image_size: [1080,1440]
+
+gui:
+  icon: icon.png
+  window_size: [1400, 1200]
+  canvas_size: [640,800]
+  list_size: [15,8]
+  label_font:
+    - times new roman
+    - 16
+  button_font:
+    - times new roman
+    - 14
+  palette:
+    canvas: "#949698"
+    Point-P: "#3C8031"
+    Point-N: "#AA1803"
+    Box: "#92268F"
+    Highlight: "#FFFFFF"
+
+  marker_size:
+    point: 7
+    point_width: 3
+    box: 5
+
+sam:
+  checkpoint: checkpoint/sam_vit_h_4b8939.pth
+  model: vit_h
+  device: cuda:0
