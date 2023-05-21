@@ -33,3 +33,8 @@ sam:
   checkpoint: checkpoint/sam_vit_b_01ec64.pth
   model: vit_b  # [vit_h, vit_l, vit_b]
   device: cpu
+  model_size:
+    vit_b: 0.34928543772548437
+    vit_l: 1.163710474036634
+    vit_h: 2.3884241273626685
+

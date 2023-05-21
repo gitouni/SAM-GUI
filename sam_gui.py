@@ -106,11 +106,16 @@ class GUI():
         self.pos_point_buttion.pack(side=tk.LEFT,padx=3)
         self.neg_point_buttion.pack(side=tk.LEFT,padx=3)
         self.box_button.pack(side=tk.RIGHT,padx=3)
-        
-        F231 = tk.Frame(F23)
-        F232 = tk.Frame(F23)
-        F231.pack(side=tk.LEFT)
-        F232.pack(side=tk.RIGHT)
+        LF23 = tk.Frame(F23)
+        RF23 = tk.Frame(F23)
+        LF23.pack(side=tk.LEFT)
+        RF23.pack(side=tk.RIGHT)
+        F231 = tk.Frame(LF23)
+        F232 = tk.Frame(RF23)
+        F233 = tk.Frame(RF23)
+        F231.pack(side=tk.TOP,pady=5)
+        F232.pack(side=tk.TOP,pady=5)
+        F233.pack(side=tk.TOP,pady=5)
         taglbox_vbar = tk.Scrollbar(F231, orient=tk.VERTICAL)
         self.taglbox = tk.Listbox(F231, yscrollcommand=taglbox_vbar.set, selectmode=tk.SINGLE,
                                   width=list_size[0],height=list_size[1],font=button_font)
@@ -121,17 +126,19 @@ class GUI():
         
         self.predict_button = tk.Button(F232, text="Predict",font=button_font,command=self.predict_mask)
         self.delete_tag_button = tk.Button(F232, text="Delete",font=button_font,command=self.delete_select_tag)
-        self.delete_all_tags_button = tk.Button(F232, text="Del All",font=button_font,command=self.delete_all_tags)
-        self.flush_button = tk.Button(F232, text="Flush",font=button_font,command=self.flush_all)
-        self.predict_button.pack(side=tk.TOP,pady=3)
-        self.delete_tag_button.pack(side=tk.TOP,pady=3)
-        self.delete_all_tags_button.pack(side=tk.TOP,pady=3)
-        self.flush_button.pack(side=tk.TOP,pady=3)
+        self.delete_all_tags_button = tk.Button(F232, text="Delete All",font=button_font,command=self.delete_all_tags)
+        self.flush_button = tk.Button(F233, text="Flush Canvas",font=button_font,command=self.flush_all)
+        self.clear_cache_button = tk.Button(F233, text="Clear Cache",font=button_font,command=self.clear_model_cache)
+        self.predict_button.pack(side=tk.LEFT,pady=3,padx=3)
+        self.delete_tag_button.pack(side=tk.LEFT,pady=3,padx=3)
+        self.delete_all_tags_button.pack(side=tk.LEFT,pady=3,padx=3)
+        self.flush_button.pack(side=tk.LEFT,pady=3,padx=3)
+        self.clear_cache_button.pack(side=tk.LEFT,pady=3,padx=3)
         
         F241 = tk.Frame(F24)
         F242 = tk.Frame(F24)
         F241.pack(side=tk.LEFT)
-        F242.pack(side=tk.RIGHT)
+        F242.pack(side=tk.LEFT)
         imglbox_vbar = tk.Scrollbar(F241, orient=tk.VERTICAL)
         savelbox_vbar = tk.Scrollbar(F242, orient=tk.VERTICAL)
         self.imglbox = tk.Listbox(F241, yscrollcommand=imglbox_vbar.set, selectmode=tk.SINGLE,
@@ -150,22 +157,28 @@ class GUI():
         
         F251 = tk.Frame(F25)
         F252 = tk.Frame(F25)
-
+        F253 = tk.Frame(F25)
         F251.pack(side=tk.LEFT)
         F252.pack(side=tk.LEFT)
+        F253.pack(side=tk.LEFT)
         self.save_mask_button = tk.Button(F251,text="Save Mask",font=button_font,command=self.save_mask)
         self.load_mask_button = tk.Button(F251,text="Load Mask",font=button_font,command=self.load_mask)
-        self.next_image_button = tk.Button(F252, text="Next Image",font=button_font)
-        self.last_image_button = tk.Button(F252, text="Last Image",font=button_font)
+        self.next_image_button = tk.Button(F252, text="Next Image",font=button_font,command=self.next_image)
+        self.last_image_button = tk.Button(F252, text="Last Image",font=button_font,command=self.last_image)
         self.save_mask_button.pack(side=tk.TOP,padx = 5, pady=3)
         self.load_mask_button.pack(side=tk.TOP,padx = 5, pady=3)
         self.next_image_button.pack(side=tk.TOP,padx = 5, pady=3)
         self.last_image_button.pack(side=tk.TOP,padx = 5, pady=3)
+        tk.Label(F253,text="Option",font=label_font).pack(side=tk.TOP,pady=3)
+        self.auto_save_var = tk.IntVar(value=1)
+        self.auto_save_check = tk.Checkbutton(F253, text="auto save", font=button_font, variable=self.auto_save_var)
+        self.auto_save_check.pack(side=tk.TOP, padx=5,pady=3)
         # Nonlocal Variables
         self.imglist = list(sorted(os.listdir(self.load_dir)))
         self.savelist = list(sorted(os.listdir(self.save_dir)))
         self.imgetk = None   
         self.masktk = None
+        self.curr_img_idx = 0
         self.curr_img_file = None
         self.input_img_file = None     
         self.input_img_arr = None
@@ -186,7 +199,6 @@ class GUI():
         self.prev_select = 0  # 0~3
         self.coord_tran = None
         self.scores = np.zeros(3)
-        
         
     def set_prompt_type(self, prompt_type:Enum):
         if(prompt_type == PromptType.PointP):
@@ -232,12 +244,13 @@ class GUI():
     def load_model(self):
         self.strvar.set("Loading SAM Model from %s..."%(self.sam_info["checkpoint"]))
         self.root.update()
-        try:
-            self.sam_model = sam_tools.get_model(self.sam_info["model"], self.sam_info["checkpoint"], self.sam_info["device"])
-        except Exception as e:
-            self.strvar.set("Exception: {}".format(e))
-        finally:
-            self.strvar.set("SAM Model loaded.")
+        real_model_size = os.stat(self.sam_info["checkpoint"]).st_size / 1024 / 1024 / 1024  # (GB)
+        ref_model_size = self.sam_info["model_size"][self.sam_info["model"]]
+        if abs(real_model_size - ref_model_size) / ref_model_size > 0.2:
+            self.strvar.set("SAM model size conflicted (%0.2f != %s model: %0.2f), please Check!"%(real_model_size, self.sam_info["model"], ref_model_size))
+            return
+        self.sam_model = sam_tools.get_model(self.sam_info["model"], self.sam_info["checkpoint"], self.sam_info["device"])
+        self.strvar.set("SAM Model loaded.")
     
     def save_mask(self):
         if self.masks is None:
@@ -246,13 +259,13 @@ class GUI():
         mask = np.array(self.masks[self.prev_select,...],dtype=np.uint8) # (H,W) (0,1)
         mask_image = Image.fromarray(mask)
         mask_basename = os.path.splitext(os.path.basename(self.curr_img_file))[0] + ".jpg"
+        mask_full_path = os.path.join(self.save_dir, mask_basename)
         if mask_basename not in self.savelist:
             self.savelist.append(mask_basename)
             self.savelbox.insert(tk.END, mask_basename)
             self.strvar.set("Selected Mask %d has been saved to %s"%(self.prev_select+1, mask_full_path))
         else:
             self.strvar.set("Selected Mask %d has been overwritted to %s"%(self.prev_select+1, mask_full_path))
-        mask_full_path = os.path.join(self.save_dir, mask_basename)
         mask_image.save(mask_full_path)
         
     def load_mask(self):
@@ -262,6 +275,7 @@ class GUI():
         index = self.savelbox.curselection()
         if len(index) == 0:
             messagebox.showerror(title="IO Error",message="No mask to load!")
+            return
         idx = index[0]
         mask_full_path = os.path.join(self.save_dir, self.savelist[idx])
         mask_image = Image.open(mask_full_path)
@@ -275,14 +289,36 @@ class GUI():
             repeats=3,
             axis=0
         )
-        self.scores = np.ones(3)
+        self.scores = np.zeros(3)
         self.highlight_mask(self.masks[0,...])
-        self.strvar.set("loaded mask from %s"%(mask_full_path))
-        
+        self.strvar.set("mask loaded from %s"%(mask_full_path))
+    
+    def next_image(self):
+        if self.auto_save_var.get() == 1 and self.masks is not None:
+            self.save_mask()
+        if self.curr_img_idx < len(self.imglist) - 1:
+            self.curr_img_idx += 1
+            self.imglbox.select_clear(0,tk.END)
+            self.imglbox.select_set(self.curr_img_idx)
+            self.imglbox_callback()
+        else:
+            self.strvar("This is the last image.")
+            
+    def last_image(self):
+        if self.auto_save_var.get() == 1 and self.masks is not None:
+            self.save_mask()
+        if self.curr_img_idx >= 1:
+            self.curr_img_idx -= 1
+            self.imglbox.select_clear(0,tk.END)
+            self.imglbox.select_set(self.curr_img_idx)
+            self.imglbox_callback()
+        else:
+            self.strvar("This is the first image.")
+    
     def run(self) -> None:
         self.flush_imglbox()
         self.flush_savelbox()
-        self.strvar.set("Click Load Model Button First.")
+        self.strvar.set("Click 'Load Model' Button First.")
         self.root.mainloop()
         
         
@@ -308,11 +344,13 @@ class GUI():
         self.flush_savelbox()
     
     def flush_imglbox(self):
+        self.imglist = list(sorted(os.listdir(self.load_dir)))
         self.imglbox.delete(0,tk.END)
         for imgfilename in self.imglist:
             self.imglbox.insert(tk.END, imgfilename)
         
     def flush_savelbox(self):
+        self.savelist = list(sorted(os.listdir(self.save_dir)))
         self.savelbox.delete(0,tk.END)
         for savefilename in self.savelist:
             self.savelbox.insert(tk.END, savefilename)
@@ -320,10 +358,16 @@ class GUI():
     def imglbox_callback(self,event:tk.Event=None):
         index = self.imglbox.curselection()
         if len(index) == 0:
-            if event.widget == self.imglbox:
-                self.strvar.set("No Image Selected for loading.")
             return
         idx = index[0]
+        self.curr_img_idx = idx
+        img_name = os.path.splitext(self.imglist[idx])[0]
+        mask_names = [os.path.splitext(name)[0] for name in self.savelist]
+        if img_name in mask_names:
+            mask_idx = mask_names.index(img_name)
+            self.savelbox.see(mask_idx)
+            self.savelbox.select_clear(0,tk.END)
+            self.savelbox.see(mask_idx)
         self.load_img_to_canvas(os.path.join(self.load_dir, self.imglist[idx]))
         
     def load_img_to_canvas(self, imgfile):
@@ -333,6 +377,9 @@ class GUI():
         image = image.resize(sam_tools.reverse_size(self.img_size),resample=Image.Resampling.BILINEAR)
         self.coord_tran = partial(sam_tools.coord_tran, kx=self.raw_img_size[0]/self.img_size[0], ky=self.raw_img_size[1]/self.img_size[1])
         self.strvar.set("%s loaded. (H: %d, W: %d)"%(imgfile, self.raw_img_size[0], self.raw_img_size[1]))
+        self.clear_model_cache()
+        self.clear_gui_cache()
+        self.delete_all_tags()
         self.imagetk = ImageTk.PhotoImage(image)
         self.canvas.create_image(0,0,anchor="nw",image=self.imagetk,tag="image")
         self.curr_img_file = imgfile
@@ -401,10 +448,6 @@ class GUI():
         self.strvar.set("Tag %s Deleted."%tag)
         
     def delete_all_tags(self):
-        if len(self.markers) > 3:
-            res = messagebox.askyesno(title="Confirm",message="Are you sure to delete all tags?")
-            if(not res):
-                return
         for tag in self.canvas_tags:
             self.canvas.delete(tag)
         self.taglbox.delete(0,tk.END)
@@ -423,9 +466,7 @@ class GUI():
         if len(index) == 0:
             return
         idx = index[0]
-        for tag in self.canvas_tmp_tags:
-            self.canvas.delete(tag)
-        self.canvas_tmp_tags.clear()
+        self.clear_tmp_markers()
         marker = self.markers[idx]
         tag = "tmp"
         if(marker["type"] == PromptType.PointP.value or marker["type"]==PromptType.PointN.value):
@@ -476,13 +517,28 @@ class GUI():
         self.canvas.delete("mask")
         self.canvas.create_image(0,0,anchor="nw", image=self.masktk,tag="mask")
     
+    def clear_model_cache(self):
+        self.masks = None
+        self.scores = np.zeros(3)
+        self.logits = None
+        self.strvar.set("Mask Input Cache Cleared.")
+    
+    def clear_gui_cache(self):
+        self.markers.clear()
+        self.canvas_tags.clear()
+        self.canvas_tmp_tags.clear()
+        self.PPcnt = 0
+        self.NPcnt = 0
+        self.Boxcnt = 0
+    
     def choose_mask(self, scale_val:str):
         val = int(scale_val)
         if(self.prev_select == val-1):
             return
         self.prev_select = val-1
-        self.strvar.set("Choose Mask %d (Score: %f)"%(val, self.scores[self.prev_select]))
-        self.highlight_mask(self.masks[self.prev_select])
+        if self.masks is not None:
+            self.strvar.set("Choose Mask %d (Score: %f)"%(val, self.scores[self.prev_select]))
+            self.highlight_mask(self.masks[self.prev_select])
     
     def predict_mask(self):
         if self.sam_model is None:
@@ -492,6 +548,7 @@ class GUI():
             messagebox.showwarning(title="Empty Image",message="Click an Image file in the img listbox.")
             return
         if self.input_img_file != self.curr_img_file:
+            self.clear_model_cache()
             self.input_img_file = self.curr_img_file
             self.strvar.set("Predicting by SAM %s using %s (New Image)"%(self.sam_info["model"], self.sam_info["device"]))
             self.root.update()
@@ -508,7 +565,7 @@ class GUI():
         max_score_id = np.argmax(self.scores)
         self.scale.set(max_score_id+1)
         self.prev_select = max_score_id
-        self.strvar.set("Predict Completed. (Best Mask: %d, Score: %f)"%(self.prev_select, self.scores[self.prev_select]))
+        self.strvar.set("Predict Completed. (Best Mask: %d, Score: %f)"%(self.prev_select+1, self.scores[self.prev_select]))
         self.highlight_mask(self.masks[max_score_id,...])
         
     def add_marker(self, event:tk.Event):
@@ -575,6 +632,7 @@ class GUI():
     def clear_tmp_markers(self):
         for tag in self.canvas_tmp_tags:
             self.canvas.delete(tag)
+        self.canvas_tmp_tags.clear()
 
 if __name__ == "__main__":
     config = yaml.load(open("config.yml",'r'),Loader=yaml.SafeLoader)
