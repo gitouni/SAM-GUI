@@ -1,7 +1,8 @@
 io:
   image_dir: img
   mask_dir: img_sam
-  image_size: [1080,1440]
+  image_size: [640,800]
+  logit_size: [256,256]  # DO NOT change UNLESS you know what you're doing
 
 gui:
   icon: icon.png
