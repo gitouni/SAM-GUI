@@ -3,11 +3,10 @@ from functools import partial
 import numpy as np
 from PIL import Image, ImageTk
 import tkinter as tk
-from tkinter import ttk
 import os
 import yaml
 from tkinter.filedialog import askdirectory
-
+import sam_tools
 
 class PromptType(Enum):
     PointP = auto()
@@ -19,7 +18,7 @@ class GUI():
     def __init__(self, icon_path:str, window_size:tuple, canvas_size:tuple,
                  list_size:tuple, img_size:tuple, marker_size:tuple,
                  label_font:tuple, button_font:tuple, palette:dict,
-                 load_dir:str, save_dir:str) -> None:
+                 load_dir:str, save_dir:str, sam_info:dict) -> None:
         self.window_size = window_size
         self.canvas_size = canvas_size
         self.list_size = list_size
@@ -30,7 +29,7 @@ class GUI():
         self.palette = palette
         self.load_dir = load_dir
         self.save_dir = save_dir
-        
+        self.sam_info = sam_info
         self.root = tk.Tk()
         self.root.title("Powered by Tkinter")
         self.root.iconphoto(True,tk.PhotoImage(file=icon_path))
@@ -84,16 +83,21 @@ class GUI():
         F23.pack(side=tk.TOP)
         tk.Label(F2, text="Markers", font=label_font).pack(side=tk.TOP)
         F24.pack(side=tk.TOP)
+        
         self.load_button = tk.Button(F21,text="Load Dir",font=button_font,command=self.set_load_dir)
         self.save_buttion = tk.Button(F21, text="Save Dir",font=button_font, command=self.set_save_dir)
+        self.load_model_button = tk.Button(F21, text="Load Model",font=button_font, command=self.load_model)
+        self.load_button.pack(side=tk.LEFT,padx=5)
+        self.save_buttion.pack(side=tk.LEFT,padx=5)
+        self.load_model_button.pack(side=tk.LEFT,padx=5)
+        
         self.pos_point_buttion = tk.Button(F22, text="Point (P)",font=button_font, command=partial(self.set_prompt_type,PromptType.PointP))
         self.neg_point_buttion = tk.Button(F22, text="Point (N)",font=button_font, command=partial(self.set_prompt_type,PromptType.PointN))
         self.box_button = tk.Button(F22, text="Box",font=button_font, command=partial(self.set_prompt_type,PromptType.Box))
-        self.load_button.pack(side=tk.LEFT,padx=5)
-        self.save_buttion.pack(side=tk.RIGHT,padx=5)
         self.pos_point_buttion.pack(side=tk.LEFT,padx=3)
         self.neg_point_buttion.pack(side=tk.LEFT,padx=3)
         self.box_button.pack(side=tk.RIGHT,padx=3)
+        
         F231 = tk.Frame(F23)
         F232 = tk.Frame(F23)
         F231.pack(side=tk.LEFT)
@@ -130,7 +134,7 @@ class GUI():
         taglbox_vbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.taglbox.bind("<<ListboxSelect>>",self.highlight_tag)
         
-        self.predict_button = tk.Button(F242, text="Predict",font=button_font)
+        self.predict_button = tk.Button(F242, text="Predict",font=button_font,command=self.predict_mask)
         self.delete_tag_button = tk.Button(F242, text="Delete",font=button_font,command=self.delete_select_tag)
         self.delete_all_tags_button = tk.Button(F242, text="Delete All",font=button_font,command=self.delete_all_tags)
         self.flush_button = tk.Button(F242, text="Flush",font=button_font,command=self.flush_canvas)
@@ -138,9 +142,12 @@ class GUI():
         self.delete_tag_button.pack(side=tk.TOP,pady=3)
         self.delete_all_tags_button.pack(side=tk.TOP,pady=3)
         self.flush_button.pack(side=tk.TOP,pady=3)
+        # Temporary Variables
         self.imgetk = None   
+        self.masktk = None
         self.curr_img_file = None
         self.input_img_file = None     
+        
         self.markers = []
         self.canvas_tags = []
         self.canvas_tmp_tags = []
@@ -148,6 +155,11 @@ class GUI():
         self.PPcnt = 0
         self.NPcnt = 0
         self.Boxcnt = 0
+        # sam
+        self.sam_model = None
+        self.masks = None  # [3, H, W]
+        self.scores = np.zeros(3)
+        self.prev_logits = None  # [1, H, W]
         
     def set_prompt_type(self, prompt_type:Enum):
         if(prompt_type == PromptType.PointP):
@@ -178,13 +190,30 @@ class GUI():
                 point_labels.append(0)
             elif(marker['type'] == PromptType.Box.value):
                 input_boxes.append(marker["coord"])
+        if len(input_points) == 0:
+            input_points = None
+            point_labels = None
+        else:
+            input_points = np.array(input_points)
+            point_labels = np.array(point_labels)
+        if len(input_boxes) == 0:
+            input_boxes = None
+        else:
+            input_boxes = np.array(input_boxes)
         return input_points, point_labels, input_boxes
+    
+    def load_model(self):
+        self.strvar.set("Loading SAM Model from %s..."%(self.sam_info["checkpoint"]))
+        self.root.update()
+        self.sam_model = sam_tools.get_model(self.sam_info["model"], self.sam_info["checkpoint"], self.sam_info["device"])
+        self.strvar.set("SAM Model loaded.")
     
     def run(self) -> None:
         self.flush_imglbox()
         self.flush_savelbox()
-        self.strvar.set("SAM GUI Powered by Tkinter")
+        self.strvar.set("Click Load Model Button First.")
         self.root.mainloop()
+        
         
     def set_load_dir(self):
         tmp:str = askdirectory(initialdir=self.load_dir,title="Directory of Loading Images")
@@ -221,14 +250,13 @@ class GUI():
         idx = index[0]
         self.load_img_to_canvas(os.path.join(self.load_dir, self.imglist[idx]))
         
-    
     def load_img_to_canvas(self, imgfile):
         image = Image.open(imgfile)
         if(image.size[0] != self.img_size[1] or image.size[1] != self.img_size[0]):
             image.resize([self.img_size[1], self.img_size[0]],resample=Image.Resampling.BILINEAR)
         self.strvar.set("%s loaded. (H: %d, W: %d)"%(imgfile, image.height, image.width))
         self.imagetk = ImageTk.PhotoImage(image)
-        self.canvas.create_image(0,0,anchor="nw",image=self.imagetk)
+        self.canvas.create_image(0,0,anchor="nw",image=self.imagetk,tag="image")
         self.curr_img_file = imgfile
         
     def flush_canvas(self):
@@ -238,7 +266,7 @@ class GUI():
         self.taglbox.delete(0,tk.END)
         self.canvas_tags.clear()
         self.canvas_tmp_tags.clear()
-        self.canvas.create_image(0,0,anchor="nw",image=self.imagetk)
+        self.canvas.create_image(0,0,anchor="nw",image=self.imagetk,tag="image")
         for marker in self.markers:
             if not isinstance(marker, dict):
                 continue
@@ -341,6 +369,34 @@ class GUI():
             self.canvas.xview_moveto(see_x)
             self.canvas.yview_moveto(see_y)
             
+    def highlight_mask(self, mask:np.ndarray):
+        """Highlight selected mask
+
+        Args:
+            mask (np.ndarray): H x W
+        """
+        color = np.array(self.palette["mask"])  # (4,)
+        mask_arr = np.array(mask[...,None] * color[None,None,:],dtype=np.uint8)
+        mask_image = Image.fromarray(mask_arr)  # (H,W,1) * (1,1,4) -> (H,W,4)
+        self.masktk = ImageTk.PhotoImage(mask_image)
+        self.canvas.delete("mask")
+        self.canvas.create_image(0,0,anchor="nw", image=self.masktk,tag="mask")
+        
+    def predict_mask(self):
+        self.strvar.set("Predicting by SAM %s using %s"%(self.sam_info["model"], self.sam_info["device"]))
+        self.root.update()
+        if self.input_img_file != self.curr_img_file:
+            self.input_img_file = self.curr_img_file
+            image = Image.open(self.input_img_file)
+            sam_tools.set_image(self.sam_model, np.array(image)[...,:3], "RGB")  # retrive first 3 channels of image (ignore alpha channel if has)
+        input_points, point_labels, input_boxes = self.marker_to_prompts(self.markers)
+        self.masks, self.scores, logits = sam_tools.mask_predict(self.sam_model,input_points, point_labels, input_boxes,self.prev_logits,True)
+        self.strvar.set("Predict Completed.")
+        max_score_id = np.argmax(self.scores)
+        self.scale.set(max_score_id+1)
+        self.prev_logits = logits[[max_score_id],...]  # [1, H, W]
+        self.highlight_mask(self.masks[max_score_id,...])
+        
     def add_marker(self, event:tk.Event):
         mx = self.canvas.canvasx(event.x)
         my = self.canvas.canvasy(event.y)
@@ -372,7 +428,7 @@ if __name__ == "__main__":
     gui = GUI(config["gui"]["icon"], config["gui"]["window_size"], config["gui"]["canvas_size"],
               config["gui"]["list_size"], config["io"]["image_size"], config["gui"]["marker_size"],
               config["gui"]["label_font"], config["gui"]["button_font"], config["gui"]["palette"],
-              config["io"]["image_dir"], config["io"]["mask_dir"])
+              config["io"]["image_dir"], config["io"]["mask_dir"], config["sam"])
     gui.run()
 
 # fig = Figure()

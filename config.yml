@@ -20,6 +20,7 @@ gui:
     Point-N: "#AA1803"
     Box: "#92268F"
     Highlight: "#FFFFFF"
+    mask: [30, 144, 255, 150]  # "RGBA"
 
   marker_size:
     point: 7
