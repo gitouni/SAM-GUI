@@ -8,13 +8,17 @@ gui:
   icon: icon.png
   window_size: [1400, 1200]
   canvas_size: [480,640]
-  list_size: [15,8]
+  marker_list_size: [10,4]
+  file_list_size: [15,8]
   label_font:
     - times new roman
     - 16
   button_font:
     - times new roman
     - 14
+  item_font:
+    - times new roman
+    - 10
   palette:
     canvas: "#949698"
     Point-P: "#3C8031"

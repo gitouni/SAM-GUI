@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import messagebox
 import os
 import yaml
-from tkinter.filedialog import askdirectory
+from tkinter.filedialog import askdirectory, askopenfilename
 import sam_tools
 class PromptType(Enum):
     PointP = auto()
@@ -19,13 +19,12 @@ class BoxState(Enum):
 
 class GUI():
     def __init__(self, icon_path:str, logit_size:tuple, canvas_size:tuple,
-                 list_size:tuple, img_size:tuple, marker_size:tuple,
-                 label_font:tuple, button_font:tuple, palette:dict,
+                 file_list_size:tuple, marker_list_size:tuple, img_size:tuple, marker_size:tuple,
+                 label_font:tuple, button_font:tuple, item_font, palette:dict,
                  load_dir:str, save_dir:str, sam_info:dict) -> None:
         # H, W
         self.logit_size = logit_size  # has not been used yet
         self.canvas_size = canvas_size
-        self.list_size = list_size
         self.img_size = img_size 
         self.raw_img_size = img_size  # will change if the input_size != img_size
         self.point_size = marker_size["point"]
@@ -118,7 +117,7 @@ class GUI():
         F233.pack(side=tk.TOP,pady=5)
         taglbox_vbar = tk.Scrollbar(F231, orient=tk.VERTICAL)
         self.taglbox = tk.Listbox(F231, yscrollcommand=taglbox_vbar.set, selectmode=tk.SINGLE,
-                                  width=list_size[0],height=list_size[1],font=button_font)
+                                  width=marker_list_size[0],height=marker_list_size[1],font=button_font)
         taglbox_vbar.config(command=self.taglbox.yview)
         self.taglbox.pack(side=tk.LEFT, fill=tk.BOTH)
         taglbox_vbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -142,9 +141,9 @@ class GUI():
         imglbox_vbar = tk.Scrollbar(F241, orient=tk.VERTICAL)
         savelbox_vbar = tk.Scrollbar(F242, orient=tk.VERTICAL)
         self.imglbox = tk.Listbox(F241, yscrollcommand=imglbox_vbar.set, selectmode=tk.SINGLE,
-                                  width=list_size[0],height=list_size[1],font=button_font)
+                                  width=file_list_size[0],height=file_list_size[1],font=button_font)
         self.savelbox = tk.Listbox(F242, yscrollcommand=savelbox_vbar.set, selectmode=tk.SINGLE,
-                                  width=list_size[0],height=list_size[1],font=button_font)
+                                  width=file_list_size[0],height=file_list_size[1],font=button_font)
         imglbox_vbar.config(command=self.imglbox.yview)
         savelbox_vbar.config(command=self.savelbox.yview)
         
@@ -169,10 +168,19 @@ class GUI():
         self.load_mask_button.pack(side=tk.TOP,padx = 5, pady=3)
         self.next_image_button.pack(side=tk.TOP,padx = 5, pady=3)
         self.last_image_button.pack(side=tk.TOP,padx = 5, pady=3)
-        tk.Label(F253,text="Option",font=label_font).pack(side=tk.TOP,pady=3)
+        tk.Label(F253,text="Option",font=button_font).pack(side=tk.TOP,pady=3)  # smaller
         self.auto_save_var = tk.IntVar(value=1)
-        self.auto_save_check = tk.Checkbutton(F253, text="auto save", font=button_font, variable=self.auto_save_var)
+        self.auto_save_check = tk.Checkbutton(F253, text="auto save", font=item_font, variable=self.auto_save_var)
         self.auto_save_check.pack(side=tk.TOP, padx=5,pady=3)
+        self.model_type_var = tk.IntVar()
+        self.model_types = ['vit_b','vit_l','vit_h']
+        self.model_type_var.set(self.model_types.index(self.sam_info["model"]))
+        self.vit_b_radio = tk.Radiobutton(F253, text="vit_b", variable=self.model_type_var,value=0,command=self.set_model_type)
+        self.vit_l_radio = tk.Radiobutton(F253, text="vit_l", variable=self.model_type_var,value=1,command=self.set_model_type)
+        self.vit_h_radio = tk.Radiobutton(F253, text="vit_h", variable=self.model_type_var,value=2,command=self.set_model_type)
+        self.vit_b_radio.pack(side=tk.TOP)
+        self.vit_l_radio.pack(side=tk.TOP)
+        self.vit_h_radio.pack(side=tk.TOP)
         # Nonlocal Variables
         self.imglist = list(sorted(os.listdir(self.load_dir)))
         self.savelist = list(sorted(os.listdir(self.save_dir)))
@@ -199,7 +207,7 @@ class GUI():
         self.prev_select = 0  # 0~3
         self.coord_tran = None
         self.scores = np.zeros(3)
-        
+    
     def set_prompt_type(self, prompt_type:Enum):
         if(prompt_type == PromptType.PointP):
             self.prompt_label.config(text="Positive Point",foreground=self.palette["Point-P"])
@@ -214,6 +222,12 @@ class GUI():
             prompt_type = None
             self.strvar.set("Empty Prompt")
         self.prompt_type = prompt_type
+    
+    def set_model_type(self):
+        val = self.model_type_var.get()
+        if self.sam_info["model"] != self.model_types[val]:
+            self.sam_info["model"] = self.model_types[val]
+            self.strvar.set("Model Type Changed to %s. (Need to Reload the model)"%self.model_types[val])
     
     def marker_to_prompts(self, markers:list):
         input_points = []
@@ -242,16 +256,28 @@ class GUI():
         return input_points, point_labels, input_boxes
     
     def load_model(self):
-        self.strvar.set("Loading SAM Model from %s..."%(self.sam_info["checkpoint"]))
+        model_path = askopenfilename(defaultextension=".pth",
+                                 initialdir=os.path.dirname(self.sam_info["checkpoint"]),
+                                 initialfile=os.path.basename(self.sam_info["checkpoint"]),
+                                 title="Load Checkpoint")
+        if not (model_path and os.path.exists(model_path)):
+            self.strvar.set("Did not load SAM Model.")
+            return
+        self.sam_info["checkpoint"] = model_path
+        self.strvar.set("Loading SAM Model from %s..."%(model_path))
         self.root.update()
-        real_model_size = os.stat(self.sam_info["checkpoint"]).st_size / 1024 / 1024 / 1024  # (GB)
+        real_model_size = os.stat(model_path).st_size / 1024 / 1024 / 1024  # (GB)
         ref_model_size = self.sam_info["model_size"][self.sam_info["model"]]
         if abs(real_model_size - ref_model_size) / ref_model_size > 0.2:
-            self.strvar.set("SAM model size conflicted (%0.2f != %s model: %0.2f), please Check!"%(real_model_size, self.sam_info["model"], ref_model_size))
+            self.strvar.set("SAM model not loaded - (%0.2f GB != %s model: %0.2f GB), please Check!"%(real_model_size, self.sam_info["model"], ref_model_size))
             return
-        self.sam_model = sam_tools.get_model(self.sam_info["model"], self.sam_info["checkpoint"], self.sam_info["device"])
-        self.strvar.set("SAM Model loaded.")
-    
+        self.sam_model = sam_tools.get_model(self.sam_info["model"], model_path, self.sam_info["device"])
+        self.strvar.set("%s SAM Model loaded (%.2f GB) to %s."%(self.sam_info["model"], real_model_size, self.sam_info["device"]))
+        if self.input_img_arr is not None:
+            self.strvar.set("Loading Cached Input Image to SAM")
+            self.root.update()
+            self.sam_model.set_image(self.input_img_arr, "RGB")
+            self.strvar.set("%s SAM Model loaded (%.2f GB) to %s."%(self.sam_info["model"], real_model_size, self.sam_info["device"]))
     def save_mask(self):
         if self.masks is None:
             messagebox.showerror(title="IO Error",message="No mask to save!")
@@ -637,8 +663,8 @@ class GUI():
 if __name__ == "__main__":
     config = yaml.load(open("config.yml",'r'),Loader=yaml.SafeLoader)
     gui = GUI(config["gui"]["icon"], config["io"]["logit_size"], config["gui"]["canvas_size"],
-              config["gui"]["list_size"], config["io"]["image_size"], config["gui"]["marker_size"],
-              config["gui"]["label_font"], config["gui"]["button_font"], config["gui"]["palette"],
+              config["gui"]["file_list_size"], config["gui"]["marker_list_size"], config["io"]["image_size"], config["gui"]["marker_size"],
+              config["gui"]["label_font"], config["gui"]["button_font"], config["gui"]["item_font"], config["gui"]["palette"],
               config["io"]["image_dir"], config["io"]["mask_dir"], config["sam"])
     gui.run()  # Program Block
 
