@@ -1,13 +1,13 @@
 io:
   image_dir: img
   mask_dir: img_sam
-  image_size: [640,800]
+  image_size: [480,640]
   logit_size: [256,256]  # DO NOT change UNLESS you know what you're doing
 
 gui:
   icon: icon.png
   window_size: [1400, 1200]
-  canvas_size: [640,800]
+  canvas_size: [480,640]
   list_size: [15,8]
   label_font:
     - times new roman
@@ -20,6 +20,7 @@ gui:
     Point-P: "#3C8031"
     Point-N: "#AA1803"
     Box: "#92268F"
+    BoxHaning: "#BBFFFF"
     Highlight: "#FFFFFF"
     mask: [30, 144, 255, 150]  # "RGBA"
 
@@ -29,6 +30,6 @@ gui:
     box: 5
 
 sam:
-  checkpoint: checkpoint/sam_vit_h_4b8939.pth
-  model: vit_h
-  device: cuda:0
+  checkpoint: checkpoint/sam_vit_b_01ec64.pth
+  model: vit_b  # [vit_h, vit_l, vit_b]
+  device: cpu

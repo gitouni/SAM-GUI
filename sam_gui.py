@@ -8,12 +8,14 @@ import os
 import yaml
 from tkinter.filedialog import askdirectory
 import sam_tools
-
 class PromptType(Enum):
     PointP = auto()
     PointN = auto()
     Box = auto()
 
+class BoxState(Enum):
+    Hanging = auto()
+    Release = auto()
 
 class GUI():
     def __init__(self, icon_path:str, logit_size:tuple, canvas_size:tuple,
@@ -74,6 +76,7 @@ class GUI():
         self.canvas_hbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.canvas.pack(fill=tk.BOTH)
         self.canvas.bind("<Button-1>",self.add_marker)
+        self.canvas.bind("<Motion>",self.adding_rectangle)
         
         F21 = tk.Frame(F2)  # IO setting
         F22 = tk.Frame(F2)  # Prompts
@@ -166,7 +169,9 @@ class GUI():
         self.curr_img_file = None
         self.input_img_file = None     
         self.input_img_arr = None
-        self.prompt_type = None
+        self.prompt_type = None  # PromptType Enum
+        self.box_state = BoxState.Release  # BoxState Enum
+        self.box_buff = None
         self.markers = []
         self.canvas_tags = []
         self.canvas_tmp_tags = []
@@ -198,8 +203,6 @@ class GUI():
             self.strvar.set("Empty Prompt")
         self.prompt_type = prompt_type
     
-
-    
     def marker_to_prompts(self, markers:list):
         input_points = []
         point_labels = []
@@ -229,8 +232,12 @@ class GUI():
     def load_model(self):
         self.strvar.set("Loading SAM Model from %s..."%(self.sam_info["checkpoint"]))
         self.root.update()
-        self.sam_model = sam_tools.get_model(self.sam_info["model"], self.sam_info["checkpoint"], self.sam_info["device"])
-        self.strvar.set("SAM Model loaded.")
+        try:
+            self.sam_model = sam_tools.get_model(self.sam_info["model"], self.sam_info["checkpoint"], self.sam_info["device"])
+        except Exception as e:
+            self.strvar.set("Exception: {}".format(e))
+        finally:
+            self.strvar.set("SAM Model loaded.")
     
     def save_mask(self):
         if self.masks is None:
@@ -239,11 +246,14 @@ class GUI():
         mask = np.array(self.masks[self.prev_select,...],dtype=np.uint8) # (H,W) (0,1)
         mask_image = Image.fromarray(mask)
         mask_basename = os.path.splitext(os.path.basename(self.curr_img_file))[0] + ".jpg"
-        self.savelist.append(mask_basename)
-        self.savelbox.insert(tk.END, mask_basename)
+        if mask_basename not in self.savelist:
+            self.savelist.append(mask_basename)
+            self.savelbox.insert(tk.END, mask_basename)
+            self.strvar.set("Selected Mask %d has been saved to %s"%(self.prev_select+1, mask_full_path))
+        else:
+            self.strvar.set("Selected Mask %d has been overwritted to %s"%(self.prev_select+1, mask_full_path))
         mask_full_path = os.path.join(self.save_dir, mask_basename)
         mask_image.save(mask_full_path)
-        self.strvar.set("Selected Mask %d has been saved to %s"%(self.prev_select+1, mask_full_path))
         
     def load_mask(self):
         if self.input_img_arr is None:
@@ -364,7 +374,7 @@ class GUI():
             self.Boxcnt += 1
             self.canvas.create_rectangle(marker['coord'][0],marker['coord'][1],
                                             marker['coord'][2],marker['coord'][3],
-                                    fill="",bg=self.palette["Box"],tags=tag,width=self.box_width)
+                                    fill="",tags=tag,width=self.box_width,outline=self.palette["Box"])
             self.canvas_tags.append(tag)
             self.taglbox.insert(tk.END, tag)
         else:
@@ -442,7 +452,7 @@ class GUI():
         elif marker['type'] == PromptType.Box.value:
             self.canvas.create_rectangle(marker['coord'][0],marker['coord'][1],
                                         marker['coord'][2],marker['coord'][3],
-                                    fill="",bg=self.palette["Highlight"],tags=tag,width=self.box_width)
+                                    fill="",outline=self.palette["Highlight"],tags=tag,width=self.box_width)
             self.canvas_tmp_tags.append(tag)
             see_x = (marker['coord'][0]-self.canvas_size[1])/(self.img_size[1] - self.canvas_size[1])
             see_y = (marker['coord'][1]-self.canvas_size[0])/(self.img_size[0] - self.canvas_size[0])
@@ -481,12 +491,14 @@ class GUI():
         if self.input_img_arr is None:
             messagebox.showwarning(title="Empty Image",message="Click an Image file in the img listbox.")
             return
-        self.strvar.set("Predicting by SAM %s using %s (Use Cached Image)"%(self.sam_info["model"], self.sam_info["device"]))
-        self.root.update()
         if self.input_img_file != self.curr_img_file:
             self.input_img_file = self.curr_img_file
-            sam_tools.set_image(self.sam_model, self.input_img_arr, "RGB")  # retrive first 3 channels of image (ignore alpha channel if has)
             self.strvar.set("Predicting by SAM %s using %s (New Image)"%(self.sam_info["model"], self.sam_info["device"]))
+            self.root.update()
+            sam_tools.set_image(self.sam_model, self.input_img_arr, "RGB")  # retrive first 3 channels of image (ignore alpha channel if has)
+        else:
+            self.strvar.set("Predicting by SAM %s using %s (Use Cached Image)"%(self.sam_info["model"], self.sam_info["device"]))
+            self.root.update()
         input_points, point_labels, input_boxes = self.marker_to_prompts(self.markers)
         if self.logits is None:
             mask_input = None
@@ -511,6 +523,14 @@ class GUI():
         elif self.prompt_type == PromptType.PointN:
             self.add_NP(mx, my)
             self.strvar.set("Negative Point Added (%d, %d)"%(real_coord[0], real_coord[1]))
+        elif self.prompt_type == PromptType.Box:
+            if self.box_state == BoxState.Release:
+                self.box_state = BoxState.Hanging
+                self.add_box_first_vertex(mx, my)
+            elif self.box_state == BoxState.Hanging:
+                self.box_state = BoxState.Release
+                self.add_box_second_vertex(mx, my)
+                
         if(self.curr_img_file is None):
             self.strvar.set("You Prompt before image loading! (load an image and press 'Flush' button to fix it)")
 
@@ -525,8 +545,36 @@ class GUI():
         marker={"type":PromptType.PointN.value, "coord":[mx,my]}
         self.markers.append(marker)
         self.add_marker_to_canvas(marker)
-        
     
+    def add_box_first_vertex(self, mx:int, my:int):
+        self.canvas_tmp_tags.append("Box-Vertex1")
+        self.canvas.create_oval(mx-self.point_size,my-self.point_size,
+                                mx+self.point_size,my+self.point_size,
+                                tag="Box-Vertex1",fill=self.palette["Box"])
+        self.box_buff = [mx,my]
+        self.strvar.set("First Vertex of the Box Added (%d,%d)"%(mx,my))
+        
+    def add_box_second_vertex(self, mx:int, my:int):
+        self.clear_tmp_markers()
+        marker = {"type":PromptType.Box.value, "coord":[self.box_buff[0], self.box_buff[1], mx, my]}
+        self.markers.append(marker)
+        self.add_marker_to_canvas(marker)
+        
+    def adding_rectangle(self, event:tk.Event=None):
+        if self.box_buff is None or self.box_state != BoxState.Hanging:
+            return
+        self.canvas.delete("rectangle")
+        self.canvas_tmp_tags.append("rectangle")
+        mx = self.canvas.canvasx(event.x)
+        my = self.canvas.canvasy(event.y)
+        self.canvas.create_rectangle(self.box_buff[0],self.box_buff[1],
+                                     mx,my,tags="rectangle",fill="",width=self.box_width,outline=self.palette["BoxHaning"])
+        self.strvar.set("Rectangle: %d, %d, %d, %d"%(self.box_buff[0],self.box_buff[1],mx,my))
+        self.root.update()
+    
+    def clear_tmp_markers(self):
+        for tag in self.canvas_tmp_tags:
+            self.canvas.delete(tag)
 
 if __name__ == "__main__":
     config = yaml.load(open("config.yml",'r'),Loader=yaml.SafeLoader)
