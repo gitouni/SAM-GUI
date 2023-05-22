@@ -1,4 +1,4 @@
-#  ![](./icon.png) SAM-GUI
+#  ![](./icon.png) Segmentation Anything Model GUI
 A GUI of [Segmentation Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) Powered by Tkinter.
 ![](doc/SAM-GUI.png)
 * Install requirements of SAM (`pip install git+https://github.com/facebookresearch/segment-anything.git`)
