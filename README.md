@@ -1,5 +1,6 @@
 #  ![](./icon.png) SAM-GUI
 A GUI of [Segmentation Anything Model (SAM)](https://github.com/facebookresearch/segment-anything) Powered by Tkinter.
+![](doc/SAM-GUI.png)
 * Install requirements of SAM (`pip install git+https://github.com/facebookresearch/segment-anything.git`)
 * Download a SAM checkpoint from [here](https://github.com/facebookresearch/segment-anything#model-checkpoints) and put it into `checkpoint/`
 * Set relevant model path and type [here](https://github.com/gitouni/SAM-GUI/blob/11ac385fd0d784f37098b93237facc5ef5dfe640/config.yml#L38)
