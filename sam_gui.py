@@ -273,11 +273,7 @@ class GUI():
             return
         self.sam_model = sam_tools.get_model(self.sam_info["model"], model_path, self.sam_info["device"])
         self.strvar.set("%s SAM Model loaded (%.2f GB) to %s."%(self.sam_info["model"], real_model_size, self.sam_info["device"]))
-        if self.input_img_arr is not None:
-            self.strvar.set("Loading Cached Input Image to SAM")
-            self.root.update()
-            self.sam_model.set_image(self.input_img_arr, "RGB")
-            self.strvar.set("%s SAM Model loaded (%.2f GB) to %s."%(self.sam_info["model"], real_model_size, self.sam_info["device"]))
+
     def save_mask(self):
         if self.masks is None:
             messagebox.showerror(title="IO Error",message="No mask to save!")
@@ -576,11 +572,15 @@ class GUI():
         if self.input_img_file != self.curr_img_file:
             self.clear_model_cache()
             self.input_img_file = self.curr_img_file
-            self.strvar.set("Predicting by SAM %s using %s (New Image)"%(self.sam_info["model"], self.sam_info["device"]))
+            self.strvar.set("Embedding New Image using %s on %s"%(self.sam_info["model"], self.sam_info["device"]))
             self.root.update()
-            sam_tools.set_image(self.sam_model, self.input_img_arr, "RGB")  # retrive first 3 channels of image (ignore alpha channel if has)
+            self.sam_model.set_image(self.input_img_arr, "RGB")  # retrive first 3 channels of image (ignore alpha channel if has)
         else:
-            self.strvar.set("Predicting by SAM %s using %s (Use Cached Image)"%(self.sam_info["model"], self.sam_info["device"]))
+            if not self.sam_model.is_image_set:
+                self.strvar.set("Loading Cached Input Image to SAM")
+                self.root.update()
+                self.sam_model.set_image(self.input_img_arr, "RGB")
+            self.strvar.set("Predicting by SAM %s on %s (Use Cached Image)"%(self.sam_info["model"], self.sam_info["device"]))
             self.root.update()
         input_points, point_labels, input_boxes = self.marker_to_prompts(self.markers)
         if self.logits is None:
@@ -667,17 +667,3 @@ if __name__ == "__main__":
               config["gui"]["label_font"], config["gui"]["button_font"], config["gui"]["item_font"], config["gui"]["palette"],
               config["io"]["image_dir"], config["io"]["mask_dir"], config["sam"])
     gui.run()  # Program Block
-
-# fig = Figure()
-# canvas = FigureCanvas(fig)
-# ax = fig.gca()
-
-# ax.text(0.0,0.0,"Test", fontsize=45)
-# ax.axis('off')
-
-# canvas.draw()       # draw the canvas, cache the renderer
-
-# image_flat = np.frombuffer(canvas.tostring_rgb(), dtype='uint8')  # (H * W * 3,)
-# image = image_flat.reshape(*fig.canvas.get_width_height(), 3)  # (H, W, 3)
-# img = Image.fromarray(image)
-# img.show()
