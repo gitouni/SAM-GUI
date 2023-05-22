@@ -18,8 +18,8 @@ A GUI of [Segmentation Anything Model (SAM)](https://github.com/facebookresearch
 - Hot Keys:
 * `Ctrl + S`: save current mask
 * `Ctrl + P`: predict current image using existing prompts
-* `Ctrl + Up`: Previous image
-* `Ctrl + Down`: Next image
+* `Ctrl + Up`: Previous image (will save current mask if `auto_save` is chosen)
+* `Ctrl + Down`: Next image (will save current mask if `auto_save` is chosen)
 * `Ctrl + M`: Switch to relevant mask of the current image
 * `Ctrl + L`: Load selected Mask to GUI
 * `Esc`: Cancel Box prompt Labeling (if you want to terminate a Haning Box Prompt, press <Esc> or change to another Prompt Type through buttons)
