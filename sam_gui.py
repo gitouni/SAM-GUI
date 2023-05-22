@@ -8,6 +8,7 @@ import os
 import yaml
 from tkinter.filedialog import askdirectory, askopenfilename
 import sam_tools
+
 class PromptType(Enum):
     PointP = auto()
     PointN = auto()
@@ -182,9 +183,17 @@ class GUI():
         self.vit_l_radio.pack(side=tk.TOP)
         self.vit_h_radio.pack(side=tk.TOP)
         # Hot Key
-        self.root.bind("<Control-s>",self)
+        self.root.bind("<Control-p>",self.predict_mask)
+        self.root.bind("<Control-P>",self.predict_mask)
+        self.root.bind("<Control-m>",self.see_relevant_maskfile)
+        self.root.bind("<Control-M>",self.see_relevant_maskfile)
+        self.root.bind("<Control-l>",self.load_mask)
+        self.root.bind("<Control-L>",self.load_mask)
+        self.root.bind("<Control-s>",self.save_mask)
+        self.root.bind("<Control-S>",self.save_mask)
         self.root.bind("<Control-Down>",self.next_image)
         self.root.bind("<Control-Up>",self.last_image)
+        self.root.bind("<Escape>",self.cancel_adding_rectangle)
         
         # Nonlocal Variables
         self.imglist = list(sorted(os.listdir(self.load_dir)))
@@ -217,16 +226,20 @@ class GUI():
         if(prompt_type == PromptType.PointP):
             self.prompt_label.config(text="Positive Point",foreground=self.palette["Point-P"])
             self.strvar.set("PromptType set to Point-P")
+            self.cancel_adding_rectangle()
         elif(prompt_type == PromptType.PointN):
             self.prompt_label.config(text="Negative Point",foreground=self.palette["Point-N"])
             self.strvar.set("PromptType set to Point-N")
+            self.cancel_adding_rectangle()
         elif(prompt_type == PromptType.Box):
             self.prompt_label.config(text="Box",foreground=self.palette["Box"])
             self.strvar.set("PromptType set to Box")
+            self.cancel_adding_rectangle()
         else:
             prompt_type = None
             self.strvar.set("Empty Prompt")
         self.prompt_type = prompt_type
+        self.clear_tmp_markers()
     
     def set_model_type(self):
         val = self.model_type_var.get()
@@ -388,15 +401,19 @@ class GUI():
             return
         idx = index[0]
         self.curr_img_idx = idx
-        img_name = os.path.splitext(self.imglist[idx])[0]
+        self.load_img_to_canvas(os.path.join(self.load_dir, self.imglist[idx]))
+    
+    def see_relevant_maskfile(self, event:tk.Event=None):
+        img_name = os.path.splitext(self.imglist[self.curr_img_idx])[0]
         mask_names = [os.path.splitext(name)[0] for name in self.savelist]
         if img_name in mask_names:
             mask_idx = mask_names.index(img_name)
             self.savelbox.see(mask_idx)
             self.savelbox.select_clear(0,tk.END)
-            self.savelbox.see(mask_idx)
-        self.load_img_to_canvas(os.path.join(self.load_dir, self.imglist[idx]))
-        
+            self.savelbox.select_set(mask_idx)
+        else:
+            self.strvar.set("Cannot Find %s in Save List. (Maybe Flush button can fix it)"%img_name)
+    
     def load_img_to_canvas(self, imgfile):
         image = Image.open(imgfile)
         self.input_img_arr:np.ndarray = np.array(image)[...,:3]  # H, W, 3
@@ -659,6 +676,11 @@ class GUI():
                                      mx,my,tags="rectangle",fill="",width=self.box_width,outline=self.palette["BoxHaning"])
         self.strvar.set("Rectangle: %d, %d, %d, %d"%(self.box_buff[0],self.box_buff[1],mx,my))
         self.root.update()
+    
+    def cancel_adding_rectangle(self, event:tk.Event=None):
+        self.box_buff = None
+        self.box_state = BoxState.Release
+        self.clear_tmp_markers()
     
     def clear_tmp_markers(self):
         for tag in self.canvas_tmp_tags:
