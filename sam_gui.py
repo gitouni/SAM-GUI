@@ -181,6 +181,11 @@ class GUI():
         self.vit_b_radio.pack(side=tk.TOP)
         self.vit_l_radio.pack(side=tk.TOP)
         self.vit_h_radio.pack(side=tk.TOP)
+        # Hot Key
+        self.root.bind("<Control-s>",self)
+        self.root.bind("<Control-Down>",self.next_image)
+        self.root.bind("<Control-Up>",self.last_image)
+        
         # Nonlocal Variables
         self.imglist = list(sorted(os.listdir(self.load_dir)))
         self.savelist = list(sorted(os.listdir(self.save_dir)))
@@ -274,7 +279,7 @@ class GUI():
         self.sam_model = sam_tools.get_model(self.sam_info["model"], model_path, self.sam_info["device"])
         self.strvar.set("%s SAM Model loaded (%.2f GB) to %s."%(self.sam_info["model"], real_model_size, self.sam_info["device"]))
 
-    def save_mask(self):
+    def save_mask(self, event:tk.Event=None):
         if self.masks is None:
             messagebox.showerror(title="IO Error",message="No mask to save!")
             return
@@ -290,7 +295,7 @@ class GUI():
             self.strvar.set("Selected Mask %d has been overwritted to %s"%(self.prev_select+1, mask_full_path))
         mask_image.save(mask_full_path)
         
-    def load_mask(self):
+    def load_mask(self, event:tk.Event=None):
         if self.input_img_arr is None:
             messagebox.showwarning(title="Image Empty",message="Image is Empty, load it first!")
             return
@@ -315,7 +320,7 @@ class GUI():
         self.highlight_mask(self.masks[0,...])
         self.strvar.set("mask loaded from %s"%(mask_full_path))
     
-    def next_image(self):
+    def next_image(self, event:tk.Event=None):
         if self.auto_save_var.get() == 1 and self.masks is not None:
             self.save_mask()
         if self.curr_img_idx < len(self.imglist) - 1:
@@ -324,9 +329,9 @@ class GUI():
             self.imglbox.select_set(self.curr_img_idx)
             self.imglbox_callback()
         else:
-            self.strvar("This is the last image.")
+            self.strvar.set("This is the last image.")
             
-    def last_image(self):
+    def last_image(self, event:tk.Event=None):
         if self.auto_save_var.get() == 1 and self.masks is not None:
             self.save_mask()
         if self.curr_img_idx >= 1:
@@ -335,7 +340,7 @@ class GUI():
             self.imglbox.select_set(self.curr_img_idx)
             self.imglbox_callback()
         else:
-            self.strvar("This is the first image.")
+            self.strvar.set("This is the first image.")
     
     def run(self) -> None:
         self.flush_imglbox()
