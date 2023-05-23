@@ -137,8 +137,10 @@ class GUI():
         
         F241 = tk.Frame(F24)
         F242 = tk.Frame(F24)
+        F243 = tk.Frame(F24)
         F241.pack(side=tk.LEFT)
         F242.pack(side=tk.LEFT)
+        F243.pack(side=tk.LEFT)
         imglbox_vbar = tk.Scrollbar(F241, orient=tk.VERTICAL)
         savelbox_vbar = tk.Scrollbar(F242, orient=tk.VERTICAL)
         self.imglbox = tk.Listbox(F241, yscrollcommand=imglbox_vbar.set, selectmode=tk.SINGLE,
@@ -152,8 +154,17 @@ class GUI():
         self.imglbox.pack(fill=tk.BOTH)
         savelbox_vbar.pack(side=tk.RIGHT,fill=tk.Y)
         self.savelbox.pack(fill=tk.BOTH)
-
         self.imglbox.bind("<<ListboxSelect>>",self.imglbox_callback)
+        tk.Label(F243,text="Options",font=button_font).pack(side=tk.TOP,pady=3)  # smaller
+        self.auto_save_var = tk.IntVar(value=1)
+        self.auto_save_check = tk.Checkbutton(F243, text="auto save", font=item_font, variable=self.auto_save_var)
+        self.auto_save_check.pack(side=tk.TOP, padx=5,pady=3)
+        self.auto_loadmask_var = tk.IntVar(value=1)
+        self.auto_loadmask_check = tk.Checkbutton(F243, text="check mode", font=item_font, variable=self.auto_loadmask_var)
+        self.auto_loadmask_check.pack(side=tk.TOP, padx=5, pady=3)
+        self.overwrite_config_var = tk.IntVar(value=1)
+        self.overwrite_config_check = tk.Checkbutton(F243, text="overwrite config", font=item_font, variable=self.overwrite_config_var)
+        self.overwrite_config_check.pack(side=tk.TOP, padx=5, pady=3)
         
         F251 = tk.Frame(F25)
         F252 = tk.Frame(F25)
@@ -169,10 +180,7 @@ class GUI():
         self.load_mask_button.pack(side=tk.TOP,padx = 5, pady=3)
         self.next_image_button.pack(side=tk.TOP,padx = 5, pady=3)
         self.last_image_button.pack(side=tk.TOP,padx = 5, pady=3)
-        tk.Label(F253,text="Option",font=button_font).pack(side=tk.TOP,pady=3)  # smaller
-        self.auto_save_var = tk.IntVar(value=1)
-        self.auto_save_check = tk.Checkbutton(F253, text="auto save", font=item_font, variable=self.auto_save_var)
-        self.auto_save_check.pack(side=tk.TOP, padx=5,pady=3)
+        tk.Label(F253,text="Model",font=button_font).pack(side=tk.TOP,pady=3)  # smaller
         self.model_type_var = tk.IntVar()
         self.model_types = ['vit_b','vit_l','vit_h']
         self.model_type_var.set(self.model_types.index(self.sam_info["model"]))
@@ -196,8 +204,14 @@ class GUI():
         self.root.bind("<Escape>",self.cancel_adding_rectangle)
         
         # Nonlocal Variables
-        self.imglist = list(sorted(os.listdir(self.load_dir)))
-        self.savelist = list(sorted(os.listdir(self.save_dir)))
+        if os.path.exists(self.load_dir):
+            self.imglist = list(sorted(os.listdir(self.load_dir)))
+        else:
+            self.imglist = []
+        if os.path.exists(self.save_dir):
+            self.savelist = list(sorted(os.listdir(self.save_dir)))
+        else:
+            self.savelist = []
         self.imgetk = None   
         self.masktk = None
         self.curr_img_idx = 0
@@ -384,13 +398,19 @@ class GUI():
         self.flush_savelbox()
     
     def flush_imglbox(self):
-        self.imglist = list(sorted(os.listdir(self.load_dir)))
+        if os.path.exists(self.load_dir):
+            self.imglist = list(sorted(os.listdir(self.load_dir)))
+        else:
+            self.imglist = []
         self.imglbox.delete(0,tk.END)
         for imgfilename in self.imglist:
             self.imglbox.insert(tk.END, imgfilename)
         
     def flush_savelbox(self):
-        self.savelist = list(sorted(os.listdir(self.save_dir)))
+        if os.path.exists(self.save_dir):
+            self.savelist = list(sorted(os.listdir(self.save_dir)))
+        else:
+            self.savelist = []
         self.savelbox.delete(0,tk.END)
         for savefilename in self.savelist:
             self.savelbox.insert(tk.END, savefilename)
@@ -402,6 +422,11 @@ class GUI():
         idx = index[0]
         self.curr_img_idx = idx
         self.load_img_to_canvas(os.path.join(self.load_dir, self.imglist[idx]))
+        if self.auto_loadmask_var.get() > 0:
+            res = self.see_relevant_maskfile()
+            if res:
+                self.load_mask()
+            
     
     def see_relevant_maskfile(self, event:tk.Event=None):
         img_name = os.path.splitext(self.imglist[self.curr_img_idx])[0]
@@ -411,8 +436,10 @@ class GUI():
             self.savelbox.see(mask_idx)
             self.savelbox.select_clear(0,tk.END)
             self.savelbox.select_set(mask_idx)
+            return True
         else:
             self.strvar.set("Cannot Find %s in Save List. (Maybe Flush button can fix it)"%img_name)
+            return False
     
     def load_img_to_canvas(self, imgfile):
         image = Image.open(imgfile)
@@ -584,7 +611,7 @@ class GUI():
             self.strvar.set("Choose Mask %d (Score: %f)"%(val, self.scores[self.prev_select]))
             self.highlight_mask(self.masks[self.prev_select])
     
-    def predict_mask(self):
+    def predict_mask(self, event:tk.Event=None):
         if self.sam_model is None:
             messagebox.showwarning(title="Empty Model",message="Click 'Load Model' Button First to load SAM.")
             return
@@ -694,3 +721,9 @@ if __name__ == "__main__":
               config["gui"]["label_font"], config["gui"]["button_font"], config["gui"]["item_font"], config["gui"]["palette"],
               config["io"]["image_dir"], config["io"]["mask_dir"], config["sam"])
     gui.run()  # Program Block
+    config["gui"]["sam"]["model"] = gui.sam_info["model"]
+    config["gui"]["sam"]["checkpoint"] = gui.sam_info["checkpoint"]
+    config["io"]["image_dir"] = gui.load_dir
+    config["io"]["mask_dir"] = gui.save_dir
+    if gui.overwrite_config_var.get() > 0:
+        yaml.dump(config, open("config.yml",'w'))
