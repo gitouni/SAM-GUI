@@ -721,8 +721,8 @@ if __name__ == "__main__":
               config["gui"]["label_font"], config["gui"]["button_font"], config["gui"]["item_font"], config["gui"]["palette"],
               config["io"]["image_dir"], config["io"]["mask_dir"], config["sam"])
     gui.run()  # Program Block
-    config["gui"]["sam"]["model"] = gui.sam_info["model"]
-    config["gui"]["sam"]["checkpoint"] = gui.sam_info["checkpoint"]
+    config["sam"]["model"] = gui.sam_info["model"]
+    config["sam"]["checkpoint"] = gui.sam_info["checkpoint"]
     config["io"]["image_dir"] = gui.load_dir
     config["io"]["mask_dir"] = gui.save_dir
     if gui.overwrite_config_var.get() > 0:
