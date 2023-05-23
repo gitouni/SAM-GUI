@@ -165,6 +165,9 @@ class GUI():
         self.overwrite_config_var = tk.IntVar(value=1)
         self.overwrite_config_check = tk.Checkbutton(F243, text="overwrite config", font=item_font, variable=self.overwrite_config_var)
         self.overwrite_config_check.pack(side=tk.TOP, padx=5, pady=3)
+        self.empty_mask_var = tk.IntVar(value=0)
+        self.empty_mask_check = tk.Checkbutton(F243, text="save empty", font=item_font, variable=self.empty_mask_var)
+        self.empty_mask_check.pack(side=tk.TOP, padx=5, pady=3)
         
         F251 = tk.Frame(F25)
         F252 = tk.Frame(F25)
@@ -308,9 +311,18 @@ class GUI():
 
     def save_mask(self, event:tk.Event=None):
         if self.masks is None:
-            messagebox.showerror(title="IO Error",message="No mask to save!")
-            return
-        mask = np.array(self.masks[self.prev_select,...],dtype=np.uint8) # (H,W) (0,1)
+            if self.empty_mask_var.get() == 0:
+                messagebox.showerror(title="IO Error",message="No mask to save!")
+                return
+            else:
+                if self.input_img_arr is not None:
+                    H, W = self.input_img_arr.shape[:2]
+                    mask = np.zeros([H,W], dtype=np.uint8)
+                else:
+                    messagebox.showerror(title="IO Error",message="No Image loaded!")
+                    return
+        else:
+            mask = np.array(self.masks[self.prev_select,...],dtype=np.uint8) # (H,W) (0,1)
         mask_image = Image.fromarray(mask)
         mask_basename = os.path.splitext(os.path.basename(self.curr_img_file))[0] + ".jpg"
         mask_full_path = os.path.join(self.save_dir, mask_basename)
@@ -333,7 +345,9 @@ class GUI():
         idx = index[0]
         mask_full_path = os.path.join(self.save_dir, self.savelist[idx])
         mask_image = Image.open(mask_full_path)
-        
+        if(mask_image.mode != "L"):
+            self.strvar.set("Invalid mask with mode:{}!".format(mask_image.mode))
+            return
         self.masks = np.repeat(
             np.array(mask_image.resize(sam_tools.reverse_size(self.raw_img_size),Image.Resampling.NEAREST))[None,...],
             repeats=3,
